@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>포스처 감지 테스트</title>
+    <style>
+      body {
+        margin: 0;
+        padding: 20px;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+          "Helvetica Neue", Arial, sans-serif;
+        background-color: #f8f9fa;
+      }
+      .container {
+        max-width: 800px;
+        margin: 0 auto;
+      }
+      .header {
+        text-align: center;
+        margin-bottom: 20px;
+      }
+      .video-container {
+        position: relative;
+        width: 100%;
+        max-width: 640px;
+        margin: 0 auto;
+        background-color: #000;
+        border-radius: 12px;
+        overflow: hidden;
+      }
+      #videoElement {
+        width: 100%;
+        height: auto;
+        display: block;
+      }
+      #resultCanvas {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+      }
+      .status {
+        margin-top: 20px;
+        padding: 15px;
+        border-radius: 8px;
+        background-color: white;
+        box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+      }
+      .status.good {
+        background-color: #d4edda;
+        color: #155724;
+      }
+      .status.bad {
+        background-color: #f8d7da;
+        color: #721c24;
+      }
+      .controls {
+        margin-top: 20px;
+        text-align: center;
+      }
+      button {
+        padding: 12px 24px;
+        font-size: 16px;
+        border: none;
+        border-radius: 8px;
+        background-color: #007aff;
+        color: white;
+        cursor: pointer;
+        transition: background-color 0.2s;
+      }
+      button:hover {
+        background-color: #0056b3;
+      }
+      button:disabled {
+        background-color: #ccc;
+        cursor: not-allowed;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <div class="header">
+        <h1>실시간 자세 교정</h1>
+      </div>
+      <div class="video-container">
+        <video id="videoElement" autoplay playsinline></video>
+        <canvas id="resultCanvas"></canvas>
+      </div>
+      <div id="status" class="status">자세를 분석하고 있습니다...</div>
+      <div class="controls">
+        <button id="startButton">시작하기</button>
+        <button id="stopButton" disabled>중지</button>
+      </div>
+    </div>
+
+    <script>
+      let ws = null;
+      let videoElement = document.getElementById("videoElement");
+      let resultCanvas = document.getElementById("resultCanvas");
+      let ctx = resultCanvas.getContext("2d");
+      let startButton = document.getElementById("startButton");
+      let stopButton = document.getElementById("stopButton");
+      let statusDiv = document.getElementById("status");
+      let stream = null;
+      let isRunning = false;
+      let lastProcessingTime = 0;
+      const PROCESS_INTERVAL = 100; // 100ms 간격으로 처리 (초당 10프레임)
+      let lastGoodPostureTime = Date.now(); // 마지막으로 올바른 자세였던 시간
+      let badPostureStartTime = null; // 잘못된 자세가 처음 감지된 시간
+      let badPostureDuration = 0; // 안좋은 자세 유지 시간 (초 단위)
+      const BAD_POSTURE_DURATION = 5000; // 5초 이상 지속될 경우 (1000ms = 1초)
+
+      async function startCamera() {
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: {
+              width: { ideal: 320 }, // 해상도를 낮춤
+              height: { ideal: 240 },
+              facingMode: "user",
+              frameRate: { ideal: 10 }, // 프레임레이트 제한
+            },
+          });
+          videoElement.srcObject = stream;
+          resultCanvas.width = videoElement.offsetWidth;
+          resultCanvas.height = videoElement.offsetHeight;
+          return true;
+        } catch (err) {
+          console.error("카메라 접근 오류:", err);
+          statusDiv.textContent = "카메라를 시작할 수 없습니다.";
+          return false;
+        }
+      }
+
+      function stopCamera() {
+        if (stream) {
+          stream.getTracks().forEach((track) => track.stop());
+          videoElement.srcObject = null;
+        }
+      }
+
+      function connectWebSocket() {
+        ws = new WebSocket("ws://localhost:8001/ws/pose-detection");
+
+        ws.onopen = () => {
+          console.log("WebSocket 연결됨");
+          isRunning = true;
+          startVideoProcessing();
+        };
+
+        ws.onmessage = (event) => {
+          const data = JSON.parse(event.data);
+          if (data.error) {
+            console.error("서버 오류:", data.error);
+            statusDiv.textContent = "오류: " + data.error;
+            return;
+          }
+
+          // 결과 이미지 표시
+          const img = new Image();
+          img.onload = () => {
+            ctx.clearRect(0, 0, resultCanvas.width, resultCanvas.height);
+            ctx.drawImage(img, 0, 0, resultCanvas.width, resultCanvas.height);
+          };
+          img.src = data.result.image;
+
+          // 상태 메시지 업데이트 (업데이트 전)
+          //statusDiv.textContent = data.result.message;
+          //statusDiv.className =
+          //  "status " + (data.result.is_good_posture ? "good" : "bad");
+
+          if (data.result.is_good_posture) {
+            lastGoodPostureTime = Date.now(); // 올바른 자세 감지 → 시간 갱신
+            badPostureStartTime = null; // 잘못된 자세 타이머 초기화
+            statusDiv.textContent = "좋은 자세입니다!";
+            statusDiv.className = "status good";
+          } else {
+            // 잘못된 자세 감지 → 처음 감지된 시간이 없다면 기록
+            if (badPostureStartTime === null) {
+              badPostureStartTime = Date.now();
+            }
+            if (Date.now() - badPostureStartTime >= BAD_POSTURE_DURATION) {
+              statusDiv.textContent = "자세가 좋지 않습니다! 교정이 필요합니다.";
+              statusDiv.className = "status bad";
+              // 알림 처리
+          if (data.result.notification) {
+            // 브라우저 알림 권한 확인 및 요청
+            if (Notification.permission === "granted") {
+              new Notification("자세 교정 알림", {
+                body: data.result.message,
+                icon: "/static/icon.png",
+              });
+            } else if (Notification.permission !== "denied") {
+              Notification.requestPermission().then((permission) => {
+                if (permission === "granted") {
+                  new Notification("자세 교정 알림", {
+                    body: data.result.message,
+                    icon: "/static/icon.png",
+                  });
+                }
+              });
+            }
+            // 소리 알림
+            const audio = new Audio(
+              "data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBkCU1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmwhBTqO0vDTgjMGHm7A7+OZRQ0PVqzn77BdGAhBmt7yw28kBjWHze/YiDkHGWe86OihUBELTKXl8bllHgY8ktXxz3wvBSF1xe7glEILElyx6OyrWBUIQ5zc8cRxJAUygszv24U7CBdktujqpVITC0mi4/K8aB8GN4/U8dJ/MQUfcsLu45ZFDBFZr+ftrVoXCECY2/LGcyYFMIXL79yIPAkWYrPn66dUFApHoOLyvmohBTON0fDUgjQGHG/A7uWYRw0PVqzm765cGQc+mdrxx3UnBS6Dyu/dij4JFV+y5+2pVhQJRZ7h8sBsIgUwis/v10M2Bhptvezmnk4OCFSp5O+xXxoHPJjZ8MpzKAUshMjt34w/ChRdsebvqlgVCEOd4PDBbSMFLYjN79h/NwYYa7rs6KBQDwdRqOPwtmIbBjiV1/HMdikFKYHG7uCNQQoSWq/l8KxaFgdBm97yw28kBSqGzO7agDkHFmi56+miUhAGUKXi8LdjHAY2ktbxzncqBSZ/xe7ilUMLEViu5fCuXBcHPprc8sRxJQUohMru3YI6CBVmturupl4i8sVxJQUohMru3YI6CBVmturupl4iB"
+            );
+            audio.play();
+          
+          }
+            }
+          }
+          
+        };
+
+        ws.onclose = () => {
+          console.log("WebSocket 연결 종료");
+          isRunning = false;
+          clearInterval(sendInterval); // ⏹ WebSocket 종료 시 메시지 전송 중단
+        };
+
+        ws.onerror = (error) => {
+          console.error("WebSocket 오류:", error);
+          statusDiv.textContent = "WebSocket 연결 오류";
+        };
+      }
+
+      function startVideoProcessing() {
+        if (!isRunning) return;
+
+        //const currentTime = Date.now();
+        //if (currentTime - lastProcessingTime < PROCESS_INTERVAL) {
+       //   requestAnimationFrame(startVideoProcessing);
+        //  return;
+        //}
+        sendInterval = setInterval(() => {
+          if (!isRunning || !ws || ws.readyState !== WebSocket.OPEN) return;
+
+        const canvas = document.createElement("canvas");
+        canvas.width = 320; // 해상도를 낮춤
+        canvas.height = 240;
+        const context = canvas.getContext("2d");
+
+        context.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
+        const imageData = canvas.toDataURL("image/jpeg", 0.6); // 품질을 낮춤
+
+       // if (ws && ws.readyState === WebSocket.OPEN) {
+          ws.send(imageData);
+          //lastProcessingTime = currentTime;
+        //}
+      },INTERVAL_MS);
+       // requestAnimationFrame(startVideoProcessing);
+      }
+
+      startButton.onclick = async () => {
+        if (await startCamera()) {
+          connectWebSocket();
+          startButton.disabled = true;
+          stopButton.disabled = false;
+        }
+      };
+
+      stopButton.onclick = () => {
+        if (ws) ws.close();
+        stopCamera();
+        clearInterval(sendInterval);
+        startButton.disabled = false;
+        stopButton.disabled = true;
+        statusDiv.className = "status";
+        statusDiv.textContent = "중지됨";
+        ctx.clearRect(0, 0, resultCanvas.width, resultCanvas.height);
+      };
+
+      // 페이지 언로드 시 정리
+      window.onbeforeunload = () => {
+        if (ws) ws.close();
+        stopCamera();
+        clearInterval(sendInterval);
+      };
+    </script>
+  </body>
+</html>
