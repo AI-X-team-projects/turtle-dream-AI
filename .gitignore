@@ -1,0 +1,9 @@
+#env 파일 제외
+.env
+
+# macOS에서 자동 생성되는 파일 무시
+.DS_Store
+
+# IDE 관련 파일 무시
+.vscode/
+.idea/
