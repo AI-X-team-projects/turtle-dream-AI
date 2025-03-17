@@ -138,6 +138,10 @@ class PoseDetector:
         upper_body_tilt = abs(nose[1] - middle_hip[1])  # 머리와 골반의 거리
 
         upper_body_tilt_threshold = h * 0.3  # 기준 값 설정 (30% 이상이면 몸이 기울어짐)
+        
+        # 머리 높이 감지
+        head_height_ratio = nose[1] / mid_shoulder[1]  # 머리 높이 대비 어깨 높이 비율
+        height_threshold = 1.05  # 머리가 어깨보다 5% 이상 낮으면 거북목 가능성
 
 
         message = "바른 자세입니다!"
@@ -165,6 +169,10 @@ class PoseDetector:
             
         if upper_body_tilt < upper_body_tilt_threshold:
             message = "몸이 앞으로 기울어져 있습니다. 허리를 펴세요."
+            is_good = False
+            
+        if head_height_ratio > height_threshold:
+            message = "머리가 너무 낮습니다. 자세를 교정하세요."
             is_good = False
     
         return {
