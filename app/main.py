@@ -90,9 +90,9 @@ def save_posture_data(user_id, result):
         "totalSessionDuration": result.get("total_session_duration", 0)
     }
 
-    print(f"📡 백엔드로 저장 요청: {BACKEND_URL}/api/posture/save")
-    print(f"📡 요청 데이터: {json.dumps(payload, indent=2, ensure_ascii=False)}")
-    print(f"📡 저장 요청 - recordedAt: {recorded_time}")
+    print(f"백엔드로 저장 요청: {BACKEND_URL}/api/posture/save")
+    print(f"요청 데이터: {json.dumps(payload, indent=2, ensure_ascii=False)}")
+    print(f"저장 요청 - recordedAt: {recorded_time}")
 
     try:
         response = requests.post(f"{BACKEND_URL}/api/posture/save", json=payload)
