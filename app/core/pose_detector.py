@@ -173,6 +173,9 @@ class PoseDetector:
         eye_to_shoulder_distance = abs(eye_center_y - shoulder_center_y)
         nose_to_eye_vertical = abs(nose[1] - eye_center_y)
         
+        # 거북목 비율 계산 - 테스트 코드에서 사용했던 방식으로 돌아가기
+        # 거북목 비율 = (코-눈 수직거리) / (눈-어깨 수직거리)
+        # 이 값이 클수록 거북목이 심하다는 의미
         if eye_to_shoulder_distance > 0:
             turtle_neck_ratio = nose_to_eye_vertical / eye_to_shoulder_distance
         else:
@@ -186,12 +189,12 @@ class PoseDetector:
             head_height_ratio = 1.0
             print("경고: shoulder_center_y가 0입니다. head_height_ratio를 1.0으로 설정합니다.")
         
-        # 임계값 설정 - 더 높게 조정
-        head_tilt_threshold = h * 0.08  # 머리 좌우 기울기 임계값 (화면 높이의 8%)
-        turtle_neck_ratio_threshold = 10.0  # 거북목 비율 임계값
-        shoulder_tilt_threshold = h * 0.08  # 어깨 기울기 임계값 (화면 높이의 8%)
+        # 임계값 설정 - 테스트 코드 기준으로 조정
+        head_tilt_threshold = h * 0.02  # 머리 좌우 기울기 임계값 (화면 높이의 2%)
+        turtle_neck_ratio_threshold = 0.17  # 거북목 비율 임계값 (17% 초과시 거북목으로 판단)
+        shoulder_tilt_threshold = h * 0.05  # 어깨 기울기 임계값 (화면 높이의 5%)
         height_threshold = 1.05  # 머리 높이 비율 임계값 (5% 이상 낮으면 거북목)
-        face_length_threshold = 530  # 얼굴 길이 임계값 (530px 이상이면 거북목)
+        face_length_threshold = 550  # 얼굴 길이 임계값 (550px 이상이면 거북목)
         head_shoulder_ratio_threshold = 3.0  # 머리 기울기가 어깨 기울기의 3배 이상이면 머리만 기울어진 것
         
         # 디버깅 로그
@@ -212,6 +215,16 @@ class PoseDetector:
         # 자세 분석 조건 검사 - 로직 개선
         is_head_tilted = head_tilt > head_tilt_threshold
         is_shoulder_tilted = shoulder_tilt > shoulder_tilt_threshold
+        is_turtle_neck = turtle_neck_ratio > turtle_neck_ratio_threshold
+        is_face_too_close = face_length > face_length_threshold
+        is_head_too_low = head_height_ratio > height_threshold
+        
+        # 디버깅 - 각 조건 출력
+        print(f"자세 조건 - 머리 기울기: {'나쁨' if is_head_tilted else '좋음'}")
+        print(f"자세 조건 - 어깨 기울기: {'나쁨' if is_shoulder_tilted else '좋음'}")
+        print(f"자세 조건 - 거북목 비율: {'나쁨' if is_turtle_neck else '좋음'}")
+        print(f"자세 조건 - 얼굴 거리: {'나쁨' if is_face_too_close else '좋음'}")
+        print(f"자세 조건 - 머리 높이: {'나쁨' if is_head_too_low else '좋음'}")
         
         # 머리와 어깨 기울기 판단 로직 개선
         if is_head_tilted and is_shoulder_tilted:
@@ -235,17 +248,17 @@ class PoseDetector:
             is_good = False
             reason += "어깨 기울기 "
 
-        if turtle_neck_ratio > turtle_neck_ratio_threshold:
+        if is_turtle_neck:
             message = "턱을 들어 목을 펴주세요."
             is_good = False
             reason += "거북목 비율 "
             
-        if face_length > face_length_threshold:
+        if is_face_too_close:
             message = "얼굴이 너무 가깝습니다. 거북목 자세입니다."
             is_good = False
             reason += "얼굴 길이 거북목 "
             
-        if head_height_ratio > height_threshold:
+        if is_head_too_low:
             message = "머리가 너무 낮습니다. 자세를 교정하세요."
             is_good = False
             reason += "머리 높이 "
