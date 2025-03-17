@@ -142,83 +142,142 @@ class PoseDetector:
         left_shoulder = (int(pose_landmarks[11].x * w), int(pose_landmarks[11].y * h))
         right_shoulder = (int(pose_landmarks[12].x * w), int(pose_landmarks[12].y * h))
 
-        # 자세 분석
-        head_tilt = abs(left_eye[1] - right_eye[1])
-        vertical_distance = abs(left_shoulder[1] - right_shoulder[1])
-        turtle_neck_ratio = abs(nose[1] - (left_eye[1] + right_eye[1]) / 2) / vertical_distance
+        # 눈과 어깨의 중심점 계산
+        eye_center_x = (left_eye[0] + right_eye[0]) / 2
+        eye_center_y = (left_eye[1] + right_eye[1]) / 2
+        eye_center = (eye_center_x, eye_center_y)
+        
+        shoulder_center_x = (left_shoulder[0] + right_shoulder[0]) / 2
+        shoulder_center_y = (left_shoulder[1] + right_shoulder[1]) / 2
+        shoulder_center = (shoulder_center_x, shoulder_center_y)
 
-        tilt_threshold = h * 0.02
-        turtle_neck_ratio_threshold = 0.15
+        # 자세 분석 - 핵심 지표 계산
+        head_tilt = abs(left_eye[1] - right_eye[1])  # 머리 좌우 기울기
+        shoulder_tilt = abs(left_shoulder[1] - right_shoulder[1])  # 어깨 기울기
         
-        # 얼굴 크기(코에서 턱까지 거리) 계산
-        nose = (int(pose_landmarks[0].x * w), int(pose_landmarks[0].y * h))
-        chin = (int(pose_landmarks[17].x * w), int(pose_landmarks[17].y * h))  # 턱 좌표
-        face_length = abs(nose[1] - chin[1])  # 얼굴 길이
+        # 머리와 어깨의 기울기 비율 계산 (머리 기울기가 어깨 기울기보다 크면 머리만 기울어진 것)
+        head_shoulder_tilt_ratio = 1.0
+        if shoulder_tilt > 0:
+            head_shoulder_tilt_ratio = head_tilt / shoulder_tilt
         
-        # 카메라와의 거리 기준
-        distance_warning_threshold = h * 0.1  # 얼굴 길이가 화면의 10% 이상이면 너무 가까움
+        # 턱 좌표 (인덱스 17이 없을 수 있으므로 예외 처리)
+        try:
+            chin = (int(pose_landmarks[17].x * w), int(pose_landmarks[17].y * h))  # 턱 좌표
+            face_length = abs(nose[1] - chin[1])  # 얼굴 길이
+        except IndexError:
+            print("경고: 턱 랜드마크(17)를 찾을 수 없습니다. face_length를 0으로 설정합니다.")
+            chin = nose  # 기본값으로 코 위치 사용
+            face_length = 0
         
-        # 머리 기울기(고개 숙임) 탐지ㅠ 
-        neck = (int(pose_landmarks[11].x * w), int(pose_landmarks[11].y * h))  # 목 좌표
-        head_tilt_angle = abs(nose[1] - neck[1])  # 머리와 목의 Y축 차이
+        # 거북목 비율 계산 (코-눈 거리 / 눈-어깨 거리)
+        eye_to_shoulder_distance = abs(eye_center_y - shoulder_center_y)
+        nose_to_eye_vertical = abs(nose[1] - eye_center_y)
+        
+        if eye_to_shoulder_distance > 0:
+            turtle_neck_ratio = nose_to_eye_vertical / eye_to_shoulder_distance
+        else:
+            turtle_neck_ratio = 0
+            print("경고: eye_to_shoulder_distance가 0입니다. turtle_neck_ratio를 0으로 설정합니다.")
+        
+        # 머리 높이 비율 (코 높이 / 어깨 높이)
+        if shoulder_center_y > 0:
+            head_height_ratio = nose[1] / shoulder_center_y
+        else:
+            head_height_ratio = 1.0
+            print("경고: shoulder_center_y가 0입니다. head_height_ratio를 1.0으로 설정합니다.")
+        
+        # 임계값 설정 - 더 높게 조정
+        head_tilt_threshold = h * 0.08  # 머리 좌우 기울기 임계값 (화면 높이의 8%)
+        turtle_neck_ratio_threshold = 10.0  # 거북목 비율 임계값
+        shoulder_tilt_threshold = h * 0.08  # 어깨 기울기 임계값 (화면 높이의 8%)
+        height_threshold = 1.05  # 머리 높이 비율 임계값 (5% 이상 낮으면 거북목)
+        face_length_threshold = 530  # 얼굴 길이 임계값 (530px 이상이면 거북목)
+        head_shoulder_ratio_threshold = 3.0  # 머리 기울기가 어깨 기울기의 3배 이상이면 머리만 기울어진 것
+        
+        # 디버깅 로그
+        print(f"자세 분석 - 머리 좌우 기울기: {head_tilt:.1f}/{head_tilt_threshold:.1f}")
+        print(f"자세 분석 - 거북목 비율: {turtle_neck_ratio:.3f}/{turtle_neck_ratio_threshold:.3f}")
+        print(f"자세 분석 - 눈-어깨 거리: {eye_to_shoulder_distance:.1f}")
+        print(f"자세 분석 - 코-눈 거리: {nose_to_eye_vertical:.1f}")
+        print(f"자세 분석 - 얼굴 길이: {face_length:.1f}/{face_length_threshold:.1f}")
+        print(f"자세 분석 - 어깨 기울기: {shoulder_tilt:.1f}/{shoulder_tilt_threshold:.1f}")
+        print(f"자세 분석 - 머리/어깨 기울기 비율: {head_shoulder_tilt_ratio:.2f}/{head_shoulder_ratio_threshold:.1f}")
+        print(f"자세 분석 - 머리 높이 비율: {head_height_ratio:.3f}/{height_threshold:.3f}")
 
-        head_tilt_threshold = h * 0.05  # 기준 값 설정 (5% 이상이면 숙여짐)
-        
-        # 어깨 기울기 탐지
-        shoulder_tilt = abs(left_shoulder[1] - right_shoulder[1])  # 어깨 높이 차이
-        shoulder_tilt_threshold = h * 0.03  # 어깨 차이가 3% 이상이면 비대칭
-        
-        # 상체 기울기 탐지
-        middle_hip = (int(pose_landmarks[23].x * w), int(pose_landmarks[23].y * h))  # 골반 중간점
-        upper_body_tilt = abs(nose[1] - middle_hip[1])  # 머리와 골반의 거리
-
-        upper_body_tilt_threshold = h * 0.3  # 기준 값 설정 (30% 이상이면 몸이 기울어짐)
-        
-        # 머리 높이 감지
-        head_height_ratio = nose[1] / mid_shoulder[1]  # 머리 높이 대비 어깨 높이 비율
-        height_threshold = 1.05  # 머리가 어깨보다 5% 이상 낮으면 거북목 가능성
-
-
+        # 자세 분석 결과
         message = "바른 자세입니다!"
         is_good = True
+        reason = ""
 
-        if head_tilt > tilt_threshold:
-            message = "머리가 기울어져 있습니다."
+        # 자세 분석 조건 검사 - 로직 개선
+        is_head_tilted = head_tilt > head_tilt_threshold
+        is_shoulder_tilted = shoulder_tilt > shoulder_tilt_threshold
+        
+        # 머리와 어깨 기울기 판단 로직 개선
+        if is_head_tilted and is_shoulder_tilted:
+            # 둘 다 기울어진 경우, 어느 쪽이 더 심한지 판단
+            if head_shoulder_tilt_ratio > head_shoulder_ratio_threshold:
+                message = "머리가 많이 기울어져 있습니다. 고개를 바로 하세요."
+                is_good = False
+                reason += "머리 기울기 "
+            else:
+                message = "전체적인 자세가 기울어져 있습니다. 바른 자세를 유지하세요."
+                is_good = False
+                reason += "전체 자세 기울기 "
+        elif is_head_tilted:
+            # 머리만 기울어진 경우
+            message = "머리가 기울어져 있습니다. 고개를 바로 하세요."
             is_good = False
+            reason += "머리 기울기 "
+        elif is_shoulder_tilted:
+            # 어깨만 기울어진 경우
+            message = "어깨가 기울어져 있습니다. 균형을 맞추세요."
+            is_good = False
+            reason += "어깨 기울기 "
 
         if turtle_neck_ratio > turtle_neck_ratio_threshold:
             message = "턱을 들어 목을 펴주세요."
             is_good = False
+            reason += "거북목 비율 "
             
-        if face_length > distance_warning_threshold:
-            message = "카메라와 너무 가까이 있습니다. 뒤로 가세요."
+        if face_length > face_length_threshold:
+            message = "얼굴이 너무 가깝습니다. 거북목 자세입니다."
             is_good = False
-            
-        if head_tilt_angle > head_tilt_threshold:
-            message = "고개를 너무 숙이고 있습니다. 정면을 보세요."
-            is_good = False
-
-        if shoulder_tilt > shoulder_tilt_threshold:
-            message = "어깨가 기울어져 있습니다. 균형을 맞추세요."
-            is_good = False
-            
-        if upper_body_tilt < upper_body_tilt_threshold:
-            message = "몸이 앞으로 기울어져 있습니다. 허리를 펴세요."
-            is_good = False
+            reason += "얼굴 길이 거북목 "
             
         if head_height_ratio > height_threshold:
             message = "머리가 너무 낮습니다. 자세를 교정하세요."
             is_good = False
+            reason += "머리 높이 "
+        
+        print(f"자세 분석 결과: {'나쁨' if not is_good else '좋음'}, 이유: {reason if reason else '없음'}")
     
+        # 결과 반환
         return {
             "is_good_posture": is_good,
             "posture_status": "GOOD" if is_good else "BAD",
             "feedback": message,
             "recorded_at": time.strftime("%Y-%m-%dT%H:%M:%S"),
             "bad_posture_duration": 0,  # analyze_frame에서 업데이트됨
-            "total_session_duration": 0  # analyze_frame에서 업데이트됨
+            "total_session_duration": 0,  # analyze_frame에서 업데이트됨
+            "posture_metrics": {
+                "head_tilt": head_tilt,
+                "turtle_neck_ratio": turtle_neck_ratio,
+                "face_length": face_length,
+                "shoulder_tilt": shoulder_tilt,
+                "head_height_ratio": head_height_ratio,
+                "eye_to_shoulder_distance": eye_to_shoulder_distance,
+                "nose_to_eye_vertical": nose_to_eye_vertical
+            },
+            "thresholds": {
+                "head_tilt_threshold": head_tilt_threshold,
+                "turtle_neck_ratio_threshold": turtle_neck_ratio_threshold,
+                "face_length_threshold": face_length_threshold,
+                "shoulder_tilt_threshold": shoulder_tilt_threshold,
+                "height_threshold": height_threshold
+            },
+            "reason": reason
         }
-
 
     def _put_korean_text(self, image: np.ndarray, text: str, position: Tuple[int, int], 
                         font_size: int, color: Tuple[int, int, int]) -> np.ndarray:

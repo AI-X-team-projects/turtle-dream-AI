@@ -60,18 +60,44 @@ async def analyze_posture(request: PostureRequest):
 
         if frame is None:
             raise HTTPException(status_code=400, detail="이미지 디코딩 실패")
+            
+        # 이미지 크기 및 형태 로깅
+        print(f"이미지 크기: {frame.shape}, 타입: {frame.dtype}")
+        
+        # 이미지에 타임스탬프 추가 (디버깅용)
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        cv2.putText(frame, timestamp, (10, frame.shape[0] - 10), 
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 1)
 
         # MediaPipe를 사용하여 자세 분석 실행
         processed_frame, analysis_result = detector.analyze_frame(frame)
 
+        # 처리된 이미지 저장 (디버깅용)
+        processed_image_path = f"{UPLOAD_DIR}/processed_{request.userId}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jpg"
+        cv2.imwrite(processed_image_path, processed_frame)
+        print(f"처리된 이미지 저장 경로: {processed_image_path}")
+
+        # 처리된 이미지를 Base64로 인코딩하여 응답에 포함
+        _, buffer = cv2.imencode('.jpg', processed_frame)
+        processed_image_base64 = base64.b64encode(buffer).decode('utf-8')
+        processed_image_data_url = f"data:image/jpeg;base64,{processed_image_base64}"
+
         # 분석 결과 로깅
-        print(f"AI 분석 결과: {json.dumps(analysis_result, indent=2, ensure_ascii=False)}")
+        analysis_result_copy = analysis_result.copy()
+        if "landmarks" in analysis_result_copy:
+            analysis_result_copy["landmarks"] = f"[{len(analysis_result_copy['landmarks'])} landmarks - 출력 생략]"
+        print(f"AI 분석 결과: {json.dumps(analysis_result_copy, indent=2, ensure_ascii=False)}")
 
         # 백엔드에 데이터 저장 요청
         response = save_posture_data(request.userId, analysis_result)
         print(f"백엔드 저장 요청 완료, 응답 코드: {response.status_code}, 응답 메시지: {response.text}")
 
-        return {"message": "이미지 분석 성공", "analysis": analysis_result}
+        # 응답에 처리된 이미지 포함
+        return {
+            "message": "이미지 분석 성공", 
+            "analysis": analysis_result,
+            "processed_image": processed_image_data_url
+        }
 
     except Exception as e:
         print(f"분석 중 오류 발생: {e}")
