@@ -36,7 +36,7 @@ class PoseDetector:
         # 포즈 상태 지속 시간 기록(dev에 반영 X)
         # 현재 자세 상태(posture_status)를 이전 상태(prev_posture_status)와 비교.
         # 상태가 변경되었으면 즉시 저장.
-        # 상태가 1분 이상 유지되면 30초마다 저장.
+        # ex)상태가 1분 이상 유지되면 30초마다 저장.
         # self.last_saved_time = 0  # 마지막 저장된 시간
         # self.posture_status_duration = 0  # 현재 자세 상태 지속 시간
         # self.prev_posture_status = None  # 이전 자세 상태
