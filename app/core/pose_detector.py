@@ -30,7 +30,17 @@ class PoseDetector:
         self.notification_cooldown = 0
         
         # 전체 세션 시간 기록 (앱 실행 후 초기화)
-        self.session_start_time = None  
+        self.session_start_time = None
+        
+        # ----------------------------------------------------------------------------------------------------
+        # 포즈 상태 지속 시간 기록(dev에 반영 X)
+        # 현재 자세 상태(posture_status)를 이전 상태(prev_posture_status)와 비교.
+        # 상태가 변경되었으면 즉시 저장.
+        # 상태가 1분 이상 유지되면 30초마다 저장.
+        # self.last_saved_time = 0  # 마지막 저장된 시간
+        # self.posture_status_duration = 0  # 현재 자세 상태 지속 시간
+        # self.prev_posture_status = None  # 이전 자세 상태
+        # ----------------------------------------------------------------------------------------------------
 
     def analyze_frame(self, frame: np.ndarray) -> Tuple[np.ndarray, Dict[str, Any]]:
         """프레임을 분석하고 결과를 반환합니다."""
@@ -93,6 +103,31 @@ class PoseDetector:
             # 피드백 텍스트 추가
             color = (0, 255, 0) if result["is_good_posture"] else (0, 0, 255)
             frame = self._put_korean_text(frame, result["feedback"], (10, 30), 32, color)
+            
+            # ----------------------------------------------------------------------------------------------------
+            # 포즈 상태 지속 시간 기록(dev에 반영 X)
+            # current_time = time.time()
+            # current_status = result["posture_status"]
+            
+            # # 1상태가 바뀌면 즉시 저장
+            # if current_status != self.prev_posture_status:
+            #     self.posture_status_duration = 0  # 지속 시간 초기화
+            #     self.last_saved_time = current_time  # 즉시 저장
+            #     save_posture_data("USER_ID", result)  # 백엔드 저장 요청
+            #     print(f"상태 변경 감지: {current_status} → 즉시 저장")
+
+            # # 상태가 1분 이상 유지되면 30초마다 저장
+            # else:
+            #     self.posture_status_duration += 1  # 1프레임마다 증가 (초 단위로 변환됨)
+                
+            #     if self.posture_status_duration >= 60 and (current_time - self.last_saved_time) >= 30:
+            #         save_posture_data("USER_ID", result)
+            #         self.last_saved_time = current_time  # 마지막 저장 시간 업데이트
+            #         print(f"{current_status} 유지 1분 이상 → 30초마다 저장")
+
+            # # 이전 상태 업데이트
+            # self.prev_posture_status = current_status
+            # ----------------------------------------------------------------------------------------------------
 
         return frame, result
 
@@ -123,7 +158,7 @@ class PoseDetector:
         # 카메라와의 거리 기준
         distance_warning_threshold = h * 0.1  # 얼굴 길이가 화면의 10% 이상이면 너무 가까움
         
-        # 머리 기울기(고개 숙임) 탐지
+        # 머리 기울기(고개 숙임) 탐지ㅠ 
         neck = (int(pose_landmarks[11].x * w), int(pose_landmarks[11].y * h))  # 목 좌표
         head_tilt_angle = abs(nose[1] - neck[1])  # 머리와 목의 Y축 차이
 
