@@ -114,6 +114,31 @@ class PoseDetector:
 
         tilt_threshold = h * 0.02
         turtle_neck_ratio_threshold = 0.15
+        
+        # 얼굴 크기(코에서 턱까지 거리) 계산
+        nose = (int(pose_landmarks[0].x * w), int(pose_landmarks[0].y * h))
+        chin = (int(pose_landmarks[17].x * w), int(pose_landmarks[17].y * h))  # 턱 좌표
+        face_length = abs(nose[1] - chin[1])  # 얼굴 길이
+        
+        # 카메라와의 거리 기준
+        distance_warning_threshold = h * 0.1  # 얼굴 길이가 화면의 10% 이상이면 너무 가까움
+        
+        # 머리 기울기(고개 숙임) 탐지
+        neck = (int(pose_landmarks[11].x * w), int(pose_landmarks[11].y * h))  # 목 좌표
+        head_tilt_angle = abs(nose[1] - neck[1])  # 머리와 목의 Y축 차이
+
+        head_tilt_threshold = h * 0.05  # 기준 값 설정 (5% 이상이면 숙여짐)
+        
+        # 어깨 기울기 탐지
+        shoulder_tilt = abs(left_shoulder[1] - right_shoulder[1])  # 어깨 높이 차이
+        shoulder_tilt_threshold = h * 0.03  # 어깨 차이가 3% 이상이면 비대칭
+        
+        # 상체 기울기 탐지
+        middle_hip = (int(pose_landmarks[23].x * w), int(pose_landmarks[23].y * h))  # 골반 중간점
+        upper_body_tilt = abs(nose[1] - middle_hip[1])  # 머리와 골반의 거리
+
+        upper_body_tilt_threshold = h * 0.3  # 기준 값 설정 (30% 이상이면 몸이 기울어짐)
+
 
         message = "바른 자세입니다!"
         is_good = True
@@ -125,7 +150,23 @@ class PoseDetector:
         if turtle_neck_ratio > turtle_neck_ratio_threshold:
             message = "턱을 들어 목을 펴주세요."
             is_good = False
+            
+        if face_length > distance_warning_threshold:
+            message = "카메라와 너무 가까이 있습니다. 뒤로 가세요."
+            is_good = False
+            
+        if head_tilt_angle > head_tilt_threshold:
+            message = "고개를 너무 숙이고 있습니다. 정면을 보세요."
+            is_good = False
 
+        if shoulder_tilt > shoulder_tilt_threshold:
+            message = "어깨가 기울어져 있습니다. 균형을 맞추세요."
+            is_good = False
+            
+        if upper_body_tilt < upper_body_tilt_threshold:
+            message = "몸이 앞으로 기울어져 있습니다. 허리를 펴세요."
+            is_good = False
+    
         return {
             "is_good_posture": is_good,
             "posture_status": "GOOD" if is_good else "BAD",
