@@ -90,7 +90,6 @@ async def analyze_posture(request: PostureRequest):
 
         # 백엔드에 데이터 저장 요청
         response = save_posture_data(request.userId, analysis_result)
-        print(f"백엔드 저장 요청 완료, 응답 코드: {response.status_code}, 응답 메시지: {response.text}")
 
         # 응답에 처리된 이미지 포함
         return {
@@ -122,6 +121,7 @@ def save_posture_data(user_id, result):
 
     try:
         response = requests.post(f"{BACKEND_URL}/api/posture/save", json=payload)
+        # 응답 로그는 여기서만 출력
         print(f"백엔드 저장 응답: {response.status_code}, {response.text}")
         return response
     except Exception as e:
