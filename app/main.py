@@ -1,4 +1,4 @@
-from fastapi import FastAPI, WebSocket
+from fastapi import FastAPI, WebSocket, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse
@@ -111,4 +111,47 @@ async def pose_detection_websocket(websocket: WebSocket):
         print(f"웹소켓 연결 오류: {str(e)}")
     finally:
         print("웹소켓 연결 종료")
-        await websocket.close() 
+        await websocket.close()
+
+@app.post("/analyze-posture")
+async def analyze_posture(request: Request):
+    """HTTP POST 엔드포인트로 포스처 분석"""
+    try:
+        # 요청 본문에서 이미지 데이터 읽기
+        data = await request.json()
+        image_data = data.get("image")
+        
+        if not image_data or not image_data.startswith('data:image'):
+            return JSONResponse(
+                status_code=400,
+                content={"error": "잘못된 이미지 데이터 형식"}
+            )
+            
+        # base64 이미지 데이터 디코딩
+        encoded_data = image_data.split(',')[1]
+        nparr = np.frombuffer(base64.b64decode(encoded_data), np.uint8)
+        frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        
+        if frame is None:
+            return JSONResponse(
+                status_code=400,
+                content={"error": "이미지 디코딩 실패"}
+            )
+        
+        # 포스처 분석 수행
+        processed_frame, result = detector.analyze_frame(frame)
+        
+        # 처리된 이미지를 base64로 인코딩
+        _, buffer = cv2.imencode('.jpg', processed_frame)
+        processed_image_base64 = base64.b64encode(buffer).decode('utf-8')
+        
+        return {
+            "image": f"data:image/jpeg;base64,{processed_image_base64}",
+            "result": result
+        }
+        
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={"error": f"이미지 처리 중 오류 발생: {str(e)}"}
+        ) 
